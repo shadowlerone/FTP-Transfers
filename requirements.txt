@@ -1,0 +1,5 @@
+watchdog
+PyExifTool
+pillow
+schedule
+python-xmp-toolkit

@@ -1,0 +1,8 @@
+*.jpg
+*.JPG
+drop/
+new_padder/
+post_2/
+__pycache__/
+
+Image-ExifTool-12.87/
