@@ -1,3 +1,4 @@
+import subprocess
 import Photo
 from pathlib import Path
 import logging
@@ -34,7 +35,8 @@ class Job():
 			BACKGROUND = DEFAULT_BACKGROUND,
 			PADDING_PERCENT=DEFAULT_PADDING_PERCENT,
 			DARK = DEFAULT_DARK,
-			SIZE = AUTO
+			SIZE = AUTO,
+			POST_COMMAND = ""
 	):
 		self.ASPECT_RATIO = ASPECT_RATIO
 		self.DATE = DATE
@@ -42,9 +44,10 @@ class Job():
 		self.PADDING_PERCENT = PADDING_PERCENT
 		self.DARK = DARK
 		self.size = SIZE
+		self.POST_COMMAND = POST_COMMAND
 
 		self.FOLDER = Path(FOLDER)
-
+	
 POST_JOB_2 = Job(Path("post_2"), ASPECT_RATIO= Job.AUTO)
 
 
@@ -66,9 +69,10 @@ class JobInstance():
 	def set_sizes(self):
 		if self.JOB.size == Job.AUTO:
 			self.width, self.height = self.photo.width, self.photo.height
-			self.size = (self.width, self.height)
 		else:
-			self.width, self.height = self.size
+			self.width, self.height = self.JOB.size
+		self.size = (self.width, self.height)
+		
 		self.target_width, self.target_height =apply_padding(self.width, self.JOB.PADDING_PERCENT) , apply_padding(self.height, self.JOB.PADDING_PERCENT)
 
 	def set_thumbnail(self):
@@ -88,6 +92,11 @@ class JobInstance():
 				logging.debug("pasting image")
 				result.paste(self.photo.thumbnail, (self.left, self.top))
 				logging.debug("saving padded image")
-				result.save(Path(self.JOB.FOLDER)/Path(self.photo.filepath).name, "JPEG", quality=60)
+				fp = Path(self.JOB.FOLDER)/Path(self.photo.filepath).name
+				result.save(fp, "JPEG", quality=60)
+				if self.JOB.POST_COMMAND != "":
+					subprocess.run(
+						self.JOB.POST_COMMAND.format(filename=fp).split(" ")
+					)
 		except:
 			logging.exception('')

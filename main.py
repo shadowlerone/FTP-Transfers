@@ -23,11 +23,29 @@ from queue import Queue
 from QueueManager import QueueManager
 from Job import Job, JobInstance, POST_JOB_2
 from Photo import Photo
+import configparser
+from fractions import Fraction
 
-WHITE = (255,255,255)
-TRANSPARENT = (0,0,0, 0)
-BLACK = (0,0,0)
-ORANGE = (255, 92, 00)
+
+def clamp(i: int, mini=0, maxi=255):
+	return min(maxi, max(mini, i))
+
+def parse_config_tuple(config_input):
+	return tuple([int(i.strip()) for i in config_input.split(",")])
+
+RELOAD = True
+
+jobs = []
+job_config = configparser.ConfigParser()
+watcher_config = configparser.ConfigParser()
+
+job_config.read("config.ini")
+print(job_config.sections())
+
+WHITE = parse_config_tuple(job_config["DEFAULT"]["WHITE"])
+TRANSPARENT = parse_config_tuple(job_config["DEFAULT"]["TRANSPARENT"])
+BLACK = parse_config_tuple(job_config["DEFAULT"]["BLACK"])
+ORANGE = parse_config_tuple(job_config["DEFAULT"]["ORANGE"])
 
 DEFAULT_BACKGROUND = WHITE
 FONT_SIZE = 14
@@ -37,12 +55,50 @@ DEFAULT_DARK = False
 DEFAULT_ASPECT_RATIO = (5/4)
 # DEFAULT_ASPECT_RATIO = (1/1)
 DEFAULT_PADDING_PERCENT = 1/12
-
-
-
-
 BASEDIR = Path.home()
+def load_configs():
+	job_config.read("config.ini")
+	print(job_config.sections())
+	# jobs = []
+	for j1 in [j for j in job_config.sections() if j.startswith("JOB-")]:
+		j = job_config[j1]
+		ar = j.get("ASPECT_RATIO")
+		if ar != Job.AUTO:
+			ar = Fraction(ar)
+		pd = Fraction(j.get("PADDING_PERCENT"))
+		s = j.get("SIZE")
+		if s != Job.AUTO:
+			# s = Job.AUTO
+			s = parse_config_tuple(s)
+		# else:
+		bg = j.get("BACKGROUND")
+		if bg == "BLACK":
+			bg = BLACK
+		elif bg == "WHITE":
+			bg = WHITE
+		elif bg == "ORANGE":
+			bg = ORANGE
+		else:
+			bg = parse_config_tuple(bg)
+		folder = j.get("FOLDER")
+		date = j.getboolean("DATE")
+		dark = j.getboolean("DARK")
+		post_command = j.get("POST_COMMAND")
+		print(
+			f"folder: {folder}\naspect_ratio: {ar}\ndate: {date}\nbg: {bg}\npadding: {pd}\ndark: {dark}\ns: {s}"
+		)
+		jobs.append(Job(
 
+			FOLDER=folder,
+			ASPECT_RATIO=ar,
+			DATE=date,
+			BACKGROUND=bg,
+			PADDING_PERCENT=pd,
+			DARK=dark,
+			SIZE=s,
+			POST_COMMAND= post_command
+		))
+		print(j)
 def min_max(i):
 	return min(i), max(i)
 
@@ -105,17 +161,17 @@ def worker():
 			continue
 
 		logging.debug(f'Working on {item}')
-		# try:
-		item.process()
-		pad_queue.put(item)
+		try:
+			item.process()
+			pad_queue.put(item)
 
-		# except:
-		# 	if (item.attempts > Photo.MAX_ATTEMPTS):
-		# 		logging.exception(f"unknown error processing file. {item.attempts}/{Photo.MAX_ATTEMPTS}, marking as done for now. TODO: IMPLEMENT ERROR CHECKING")
-		# 	else: 
-		# 		logging.warning(f"unknown error processing file {item.file_path}. attempt {item.attempts}/{Photo.MAX_ATTEMPTS}\nWaiting {Photo.BASE_WAIT_TIME * (2**item.attempts)} seconds before next attempt.")
-		# 		photos.put(item)
-		# 		continue
+		except:
+			if (item.attempts > Photo.MAX_ATTEMPTS):
+				logging.exception(f"unknown error processing file. {item.attempts}/{Photo.MAX_ATTEMPTS}, marking as done for now. TODO: IMPLEMENT ERROR CHECKING")
+			else: 
+				logging.warning(f"unknown error processing file {item.file_path}. attempt {item.attempts}/{Photo.MAX_ATTEMPTS}\nWaiting {Photo.BASE_WAIT_TIME * (2**item.attempts)} seconds before next attempt.")
+				photos.put(item)
+				continue
 
 			# logging.warning()
 		# print(item.file_name)
@@ -130,8 +186,11 @@ def pad():
 		try:
 			logging.info(f'Padding {item}')
 			item.pad()
-			JI = JobInstance(POST_JOB_2, item)
-			JI()
+			if RELOAD:
+				load_configs()
+			for j in jobs:
+				JI = JobInstance(j, item)
+				JI()
 		except:
 			logging.exception(f"unknown error processing file. {item.attempts}/{Photo.MAX_ATTEMPTS}, marking as done for now. TODO: IMPLEMENT ERROR CHECKING")
 			pad_queue.put(item)
@@ -151,6 +210,7 @@ def pad():
 if __name__ == '__main__':
 	print("Starting")
 	logging.basicConfig(level=logging.INFO)
+	load_configs()
 	# threading.Thread(target=ftpcopy, daemon=True).start()
 	logging.info("Initializing Queues")
 	photos = QueueManager(Photo, "photo_q")
